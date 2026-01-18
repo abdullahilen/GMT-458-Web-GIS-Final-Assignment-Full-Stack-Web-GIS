@@ -251,5 +251,37 @@ app.get('/setup-database', async (req, res) => {
         res.send("✅ Database Tables & Roles Ready!");
     } catch (err) { console.error(err); res.status(500).send(err.message); }
 });
+// --- EMERGENCY ADMIN CREATOR ---
+app.get('/create-admin-user', async (req, res) => {
+    try {
+        const username = "SuperAdmin"; // <--- This will be your username
+        const password = "admin123";   // <--- This will be your password
+        const role = "admin";
+
+        // 1. Check if exists
+        const userCheck = await db.query('SELECT * FROM users WHERE username = $1', [username]);
+        if (userCheck.rows.length > 0) {
+            // If exists, FORCE UPDATE their role to admin
+            await db.query('UPDATE users SET role = $1 WHERE username = $2', ['admin', username]);
+            return res.send(`User '${username}' already exists. I have updated their role to ADMIN. Go log in!`);
+        }
+
+        // 2. Hash Password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // 3. Create User
+        await db.query(
+            'INSERT INTO users (username, password, role) VALUES ($1, $2, $3)',
+            [username, hashedPassword, role]
+        );
+
+        res.send(`✅ SUCCESS! Created user: ${username} / Password: ${password}. <br> <a href="/">Go to Login</a>`);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error creating admin: " + err.message);
+    }
+});
 
 app.listen(PORT, () => { console.log(`🚀 Server running on port ${PORT}`); })
