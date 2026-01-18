@@ -96,11 +96,13 @@ app.get('/setup-database', async (req, res) => {
             );
         `);
         res.send("✅ Database Tables Created Successfully!");
+ // ... setup route code ...
     } catch (err) {
         console.error(err);
         res.status(500).send("❌ Error: " + err.message);
     }
-});git add .
+});
+
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
