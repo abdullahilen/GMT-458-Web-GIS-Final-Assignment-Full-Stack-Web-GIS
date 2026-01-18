@@ -326,7 +326,61 @@ async function loadPoints() {
 
             loadPoints();
         }
+// --- BU FONKSİYONU SCRIPT ETİKETLERİNİN İÇİNE EKLE ---
 
+async function handleAuth() {
+    const usernameInput = document.getElementById('username').value;
+    const pass = document.getElementById('password').value;
+    
+    // isLoginMode değişkeni sayfanın başında tanımlı olmalı (let isLoginMode = true;)
+    // Eğer tanımlı değilse bu satırı: const endpoint = '/api/auth/login'; yapabilirsin.
+    const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+
+    if (!usernameInput || !pass) {
+        document.getElementById('error-msg').innerText = "Lütfen tüm alanları doldurun";
+        return;
+    }
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: usernameInput, password: pass })
+        });
+        
+        const data = await res.json();
+
+        if (res.ok) {
+            // Token ve Kullanıcı Adını Kaydet
+            localStorage.setItem('gis_token', data.token);
+            localStorage.setItem('gis_username', usernameInput);
+
+            // --- ADMIN YETKİLERİNİ KAYDET (ÖNEMLİ KISIM) ---
+            if (data.user) {
+                localStorage.setItem('role', data.user.role); 
+                localStorage.setItem('userId', data.user.id);
+            }
+            // ------------------------------------------------
+
+            // Giriş ekranını kapat, haritayı aç
+            document.getElementById('auth-modal').style.display = 'none';
+            
+            // Eğer sayfa yenilenmeden harita açılsın istiyorsan:
+            if (typeof showApp === 'function') {
+                showApp();
+            } else {
+                // showApp yoksa sayfayı yenile, checkAuth gerisini halleder
+                location.reload();
+            }
+
+        } else {
+            document.getElementById('error-msg').innerText = data.msg || "Giriş Hatası";
+        }
+    } catch (err) { 
+        console.error(err); 
+        document.getElementById('error-msg').innerText = "Sunucuya bağlanılamadı.";
+    }
+}
         // --- LOAD POINTS ---
         async function loadPoints() {
             const token = localStorage.getItem('gis_token');
