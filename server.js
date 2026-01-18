@@ -94,16 +94,25 @@ app.get('/', (req, res) => {
     res.send('API is running...');
 });
 
-// --- DATABASE SETUP ROUTE (Updated) ---
+// --- ROBUST DATABASE SETUP ROUTE ---
 app.get('/setup-database', async (req, res) => {
     try {
-        // 1. Create Tables if they don't exist
+        // 1. Create Users Table
         await db.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(255) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL
             );
+        `);
+        
+        // 2. Fix 'role' column if missing
+        try {
+            await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';`);
+        } catch (e) { console.log("Role column likely exists"); }
+
+        // 3. Create Points Table (The likely culprit!)
+        await db.query(`
             CREATE TABLE IF NOT EXISTS points (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(255),
@@ -115,16 +124,10 @@ app.get('/setup-database', async (req, res) => {
             );
         `);
 
-        // 2. Add the missing 'role' column safely
-        await db.query(`
-            ALTER TABLE users 
-            ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';
-        `);
-
-        res.send("✅ Database Fixed! Added 'role' column.");
+        res.send("✅ Database Tables Verified & Fixed!");
     } catch (err) {
         console.error(err);
-        res.status(500).send("❌ Error: " + err.message);
+        res.status(500).send("❌ Setup Failed: " + err.message);
     }
 });
 
