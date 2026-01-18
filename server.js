@@ -94,9 +94,10 @@ app.get('/', (req, res) => {
     res.send('API is running...');
 });
 
-// --- DATABASE SETUP ROUTE ---
+// --- DATABASE SETUP ROUTE (Updated) ---
 app.get('/setup-database', async (req, res) => {
     try {
+        // 1. Create Tables if they don't exist
         await db.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -113,12 +114,19 @@ app.get('/setup-database', async (req, res) => {
                 username VARCHAR(255)
             );
         `);
-        res.send("✅ Database Tables Created Successfully!");
+
+        // 2. Add the missing 'role' column safely
+        await db.query(`
+            ALTER TABLE users 
+            ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';
+        `);
+
+        res.send("✅ Database Fixed! Added 'role' column.");
     } catch (err) {
         console.error(err);
         res.status(500).send("❌ Error: " + err.message);
     }
-});
+});git
 
 // Start Server
 const PORT = process.env.PORT || 3000;
