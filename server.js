@@ -22,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// --- 3. SWAGGER CONFIGURATION (Documentation) ---
+// --- 3. SWAGGER CONFIGURATION ---
 const swaggerOptions = {
     definition: {
         openapi: '3.0.0',
@@ -31,7 +31,7 @@ const swaggerOptions = {
             version: '1.0.0',
             description: 'API for managing spatial points with User Roles',
         },
-        servers: [{ url: `https://gmt-458-web-gis-final-assignment-full.onrender.com` }], // CHANGE THIS TO YOUR RENDER URL
+        servers: [{ url: `https://gmt-458-web-gis-final-assignment-full.onrender.com` }], // Ensure this matches your URL
         components: {
             securitySchemes: {
                 bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
@@ -39,7 +39,7 @@ const swaggerOptions = {
         },
         security: [{ bearerAuth: [] }]
     },
-    apis: ['server.js'], // Look in this file for docs
+    apis: ['server.js'], 
 };
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
@@ -68,7 +68,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
  */
 app.post('/api/auth/register', async (req, res) => {
     try {
-        // DEFAULT ROLE is 'user' if not provided
         const { username, password, role } = req.body;
         const assignedRole = role || 'user'; 
 
@@ -78,7 +77,6 @@ app.post('/api/auth/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // We save the ROLE to the database
         const newUser = await db.query(
             'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING id, username, role',
             [username, hashedPassword, assignedRole]
@@ -118,7 +116,6 @@ app.post('/api/auth/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.rows[0].password);
         if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
 
-        // Include ROLE in the token
         const token = jwt.sign({ id: user.rows[0].id, role: user.rows[0].role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
         res.json({ token, user: user.rows[0] });
     } catch (err) { console.error(err); res.status(500).send("Server Error"); }
@@ -142,35 +139,13 @@ function authenticateToken(req, res, next) {
  * @swagger
  * /api/layer/points:
  * get:
- * summary: Get all points
+ * summary: Get all points (Admin sees all, User sees own)
  * tags: [Points]
  * security:
  * - bearerAuth: []
  * responses:
  * 200:
  * description: List of points
- */
-app.get('/api/layer/points', authenticateToken, async (req, res) => {
-    try {
-        // ADMIN sees EVERYTHING. Users see only their OWN.
-        let query;
-        let params = [];
-        
-        if (req.user.role === 'admin') {
-            query = `SELECT points.*, users.username FROM points JOIN users ON points.user_id = users.id`;
-        } else {
-            query = `SELECT points.*, users.username FROM points JOIN users ON points.user_id = users.id WHERE points.user_id = $1`;
-            params = [req.user.id];
-        }
-
-        const result = await db.query(query, params);
-        res.json(result.rows);
-    } catch (err) { console.error(err); res.status(500).send("Server Error"); }
-});
-
-/**
- * @swagger
- * /api/layer/points:
  * post:
  * summary: Create a point
  * tags: [Points]
@@ -190,9 +165,23 @@ app.get('/api/layer/points', authenticateToken, async (req, res) => {
  * 200:
  * description: Point created
  */
+app.get('/api/layer/points', authenticateToken, async (req, res) => {
+    try {
+        let query;
+        let params = [];
+        if (req.user.role === 'admin') {
+            query = `SELECT points.*, users.username FROM points JOIN users ON points.user_id = users.id`;
+        } else {
+            query = `SELECT points.*, users.username FROM points JOIN users ON points.user_id = users.id WHERE points.user_id = $1`;
+            params = [req.user.id];
+        }
+        const result = await db.query(query, params);
+        res.json(result.rows);
+    } catch (err) { console.error(err); res.status(500).send("Server Error"); }
+});
+
 app.post('/api/layer/points', authenticateToken, async (req, res) => {
     try {
-        // GUESTS cannot create points
         if (req.user.role === 'guest') return res.status(403).json({ msg: "Guests cannot create data" });
 
         const { name, description, latitude, longitude } = req.body;
@@ -230,12 +219,10 @@ app.delete('/api/layer/points/:id', authenticateToken, async (req, res) => {
         let result;
 
         if (req.user.role === 'admin') {
-            // ADMIN can delete ANY point
             result = await db.query('DELETE FROM points WHERE id = $1 RETURNING *', [id]);
         } else if (req.user.role === 'guest') {
              return res.status(403).json({ msg: "Guests cannot delete" });
         } else {
-            // USERS can only delete their OWN points
             result = await db.query('DELETE FROM points WHERE id = $1 AND user_id = $2 RETURNING *', [id, req.user.id]);
         }
         
@@ -244,7 +231,7 @@ app.delete('/api/layer/points/:id', authenticateToken, async (req, res) => {
     } catch (err) { console.error(err); res.status(500).send("Server Error"); }
 });
 
-// Setup Route (Run once)
+// Setup Route
 app.get('/setup-database', async (req, res) => {
     try {
         await db.query(`
