@@ -12,7 +12,7 @@
             --sidebar-dark: #121212;
             --accent-neon: #00e676;
             --text-white: #ededed;
-            --danger-color: #e74c3c;
+            --danger-color: #ff4444;
             --edit-color: #2fc6d7;
         }
 
@@ -27,7 +27,7 @@
         }
         #auth-screen::before {
             content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px);
+            background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px);
         }
         .auth-box {
             position: relative; z-index: 2001; background: rgba(30, 30, 30, 0.95); 
@@ -60,25 +60,21 @@
         .point-card:hover { background: #222; border-color: var(--accent-neon); }
         .point-header { display: flex; justify-content: space-between; align-items: center; }
         .sidebar-actions { display: flex; gap: 8px; }
-        .icon-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 2px; opacity: 0.6; }
+        .icon-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 2px; opacity: 0.6; color: #fff; margin-top: 0; width: auto; }
         .icon-btn:hover { opacity: 1; transform: scale(1.2); }
         .icon-edit { color: var(--edit-color); }
         .icon-delete { color: var(--danger-color); }
-        .point-title { font-weight: bold; }
+        .point-title { font-weight: bold; color: #fff; }
         .point-desc { font-size: 0.85rem; color: #888; margin-top: 5px; }
         .point-user { font-size: 0.7rem; color: #555; margin-top: 10px; }
 
         #map { flex: 1; }
-        .btn-logout { background: transparent; border: 1px solid #444; padding: 4px 8px; color: #888; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+        .btn-logout { background: transparent; border: 1px solid #444; padding: 4px 8px; color: #888; border-radius: 4px; cursor: pointer; font-size: 0.8rem; width: auto; margin-top: 0; }
         
         /* POPUP & MODAL */
-        .leaflet-popup-content-wrapper { background: #222; color: #ededed; border: 1px solid var(--accent-neon); }
-        .leaflet-popup-tip { background: #222; }
-        .popup-btn-row { display: flex; gap: 5px; margin-top: 8px; border-top: 1px solid #333; padding-top: 8px; }
-        .popup-btn { flex: 1; border: none; padding: 5px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; color: white; }
-        .btn-edit { background: var(--edit-color); }
-        .btn-delete { background: var(--danger-color); }
-
+        .leaflet-popup-content-wrapper { background: #222; color: #ededed; border: 1px solid var(--accent-neon); padding: 0; }
+        .leaflet-popup-tip { background: #222; border: 1px solid var(--accent-neon); }
+        
         #modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: none; justify-content: center; align-items: center; }
         .modal-box { background: #111; border: 1px solid var(--accent-neon); padding: 30px; width: 350px; border-radius: 6px; }
         .modal-box h3 { color: var(--accent-neon); margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
@@ -98,7 +94,7 @@
             <input type="text" id="username" placeholder="USER ID / CODENAME">
             <input type="password" id="password" placeholder="PASSWORD">
             <button id="main-btn" class="btn-login" onclick="handleAuth()">ACCESS SYSTEM</button>
-            <p id="error-msg" style="color:#ff5252; margin-top: 10px;"></p>
+            <p id="error-msg" style="color:#ff5252; margin-top: 10px; font-size: 0.9em;"></p>
             <p class="toggle-text" onclick="toggleMode()">New Unit? Register</p>
         </div>
     </div>
@@ -139,7 +135,7 @@
         let isLoginMode = true;
         let tempLatLng = null;
         let editingId = null;
-        let allPointsData = []; // Store point data here to avoid quote errors
+        let allPointsData = []; // Store point data here
 
         // Start App if logged in
         if (token) {
@@ -166,128 +162,59 @@
             }
         }
 
-       // --- TÜM LOADPOINTS FONKSİYONU (Kopyala ve Eskisinin Yerine Yapıştır) ---
+        async function handleAuth() {
+            const usernameInput = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
 
-async function loadPoints() {
-    // 1. Token Kontrolü
-    const token = localStorage.getItem('gis_token'); 
-    if (!token) return;
-
-    try {
-        // 2. Veriyi Sunucudan Çek
-        const res = await fetch('/api/layer/points', {
-            headers: { 'Authorization': token }
-        });
-
-        if (!res.ok) {
-            console.error("Veri çekilemedi");
-            return;
-        }
-
-        const allPoints = await res.json();
-        if (!Array.isArray(allPoints)) return;
-
-        // 3. Değişkenleri Hazırla
-        allPointsData = allPoints; // Global değişken (varsa)
-
-        // Eski harita markerlarını temizle
-        if (typeof markerLayer !== 'undefined' && markerLayer) {
-            map.removeLayer(markerLayer);
-        }
-        markerLayer = L.featureGroup();
-
-        // Sağdaki listeyi temizle (varsa)
-        const listContainer = document.getElementById('points-list');
-        if (listContainer) listContainer.innerHTML = '';
-
-        // Kimin giriş yaptığını öğren
-        const currentUserId = localStorage.getItem('userId');
-        const currentUserRole = localStorage.getItem('role');
-
-        // 4. Döngü: Her nokta için işlem yap
-        allPoints.forEach(p => {
-            const lat = parseFloat(p.lat);
-            const lng = parseFloat(p.lng);
-
-            // Marker oluştur
-            const marker = L.marker([lat, lng]);
-
-            // --- POPUP İÇERİĞİ (GÖRÜNÜM AYARLARI BURADA) ---
-            let popupContent = `
-                <div style="text-align: center; width: 200px; font-family: sans-serif;">
-                    
-                    <h3 style="margin: 0 0 5px 0; color: #333;">${p.name}</h3>
-                    
-                    <p style="margin: 0 0 10px 0; color: #666; font-size: 14px; white-space: pre-wrap;">${p.description}</p>
-                    
-                    <div style="font-size: 12px; color: #999; margin-bottom: 10px;">
-                        Ekleyen: ${p.username || 'Bilinmiyor'}
-                    </div>
-            `;
-
-            // Eğer Admin ise veya kullanıcı kendi piniyse "SİL" butonu ekle
-            if (currentUserRole === 'admin' || currentUserId == p.user_id) {
-                popupContent += `
-                    <button onclick="deletePoint(${p.id})" 
-                            style="
-                                background-color: #ff4444; 
-                                color: white; 
-                                border: none; 
-                                padding: 8px 15px; 
-                                border-radius: 5px; 
-                                cursor: pointer; 
-                                font-weight: bold;
-                                width: 100%;">
-                        SİL
-                    </button>
-                `;
+            if (!usernameInput || !pass) {
+                document.getElementById('error-msg').innerText = "Please fill all fields";
+                return;
             }
 
-            popupContent += `</div>`; // Div kapanış
-            // --------------------------------------------------
-
-            marker.bindPopup(popupContent);
-            markerLayer.addLayer(marker);
-
-            // Sağ menüye (listeye) ekle
-            if (listContainer) {
-                const li = document.createElement('div');
-                li.className = 'point-item';
-                // CSS ile uğraşma diye stilleri buraya gömdüm
-                li.style.borderBottom = "1px solid #eee";
-                li.style.padding = "10px";
-                li.style.cursor = "pointer";
-                li.style.background = "#fff";
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameInput, password: pass })
+                });
                 
-                li.innerHTML = `
-                    <div style="font-weight: bold; color: #333;">${p.name}</div>
-                    <div style="color: #666; font-size: 0.9em;">${p.description}</div>
-                `;
-                
-                li.onclick = () => {
-                    map.setView([lat, lng], 15);
-                    marker.openPopup();
-                };
-                listContainer.appendChild(li);
+                const data = await res.json();
+
+                if (res.ok) {
+                    token = data.token;
+                    localStorage.setItem('gis_token', data.token);
+                    localStorage.setItem('gis_username', usernameInput);
+
+                    // --- ADMIN/USER INFO SAVED HERE ---
+                    if (data.user) {
+                        localStorage.setItem('role', data.user.role); 
+                        localStorage.setItem('userId', data.user.id);
+                    }
+
+                    showApp();
+                } else {
+                    document.getElementById('error-msg').innerText = data.msg || "Authentication Failed";
+                }
+            } catch (err) { 
+                console.error(err); 
+                document.getElementById('error-msg').innerText = "Server Error";
             }
-        });
-
-        // Haritaya markerları ekle
-        map.addLayer(markerLayer);
-
-    } catch (err) {
-        console.error("LoadPoints hatası:", err);
-    }
-}
+        }
 
         function showApp() {
             document.getElementById('auth-screen').style.display = 'none';
-            if (!map) initMap();
+            // Wait slightly for DOM to settle before initializing map
+            setTimeout(() => {
+                if (!map) initMap();
+            }, 100);
         }
 
         function logout() {
             localStorage.removeItem('gis_token');
             localStorage.removeItem('gis_username');
+            localStorage.removeItem('role');
+            localStorage.removeItem('userId');
             location.reload();
         }
 
@@ -299,6 +226,7 @@ async function loadPoints() {
                 attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 20
             }).addTo(map);
 
+            // Locate Button
             const locateControl = L.control({ position: 'topleft' });
             locateControl.onAdd = function() {
                 const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
@@ -314,6 +242,7 @@ async function loadPoints() {
                  .addTo(map).bindPopup("TARGET ACQUIRED").openPopup();
             });
 
+            // Right Click to Add Point
             map.on('contextmenu', (e) => {
                 editingId = null; 
                 document.getElementById('modal-title').innerText = "NEW PIN";
@@ -326,161 +255,115 @@ async function loadPoints() {
 
             loadPoints();
         }
-// --- BU FONKSİYONU SCRIPT ETİKETLERİNİN İÇİNE EKLE ---
 
-async function handleAuth() {
-    const usernameInput = document.getElementById('username').value;
-    const pass = document.getElementById('password').value;
-    
-    // isLoginMode değişkeni sayfanın başında tanımlı olmalı (let isLoginMode = true;)
-    // Eğer tanımlı değilse bu satırı: const endpoint = '/api/auth/login'; yapabilirsin.
-    const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
-
-    if (!usernameInput || !pass) {
-        document.getElementById('error-msg').innerText = "Lütfen tüm alanları doldurun";
-        return;
-    }
-
-    try {
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: usernameInput, password: pass })
-        });
-        
-        const data = await res.json();
-
-        if (res.ok) {
-            // Token ve Kullanıcı Adını Kaydet
-            localStorage.setItem('gis_token', data.token);
-            localStorage.setItem('gis_username', usernameInput);
-
-            // --- ADMIN YETKİLERİNİ KAYDET (ÖNEMLİ KISIM) ---
-            if (data.user) {
-                localStorage.setItem('role', data.user.role); 
-                localStorage.setItem('userId', data.user.id);
-            }
-            // ------------------------------------------------
-
-            // Giriş ekranını kapat, haritayı aç
-            document.getElementById('auth-modal').style.display = 'none';
-            
-            // Eğer sayfa yenilenmeden harita açılsın istiyorsan:
-            if (typeof showApp === 'function') {
-                showApp();
-            } else {
-                // showApp yoksa sayfayı yenile, checkAuth gerisini halleder
-                location.reload();
-            }
-
-        } else {
-            document.getElementById('error-msg').innerText = data.msg || "Giriş Hatası";
-        }
-    } catch (err) { 
-        console.error(err); 
-        document.getElementById('error-msg').innerText = "Sunucuya bağlanılamadı.";
-    }
-}
-        // --- LOAD POINTS ---
+        // --- LOAD POINTS (Unified Logic) ---
         async function loadPoints() {
-            const token = localStorage.getItem('gis_token');
-            if (!token) return;
+            const currentToken = localStorage.getItem('gis_token'); 
+            if (!currentToken) return;
 
             try {
                 const res = await fetch('/api/layer/points', {
-                    headers: { 'Authorization': token }
+                    headers: { 'Authorization': currentToken }
                 });
 
                 if (!res.ok) {
-                    console.error("Error loading points");
+                    console.error("Failed to load points");
                     return;
                 }
 
                 const allPoints = await res.json();
                 if (!Array.isArray(allPoints)) return;
 
-                // Store globally to avoid quote errors in event handlers
                 allPointsData = allPoints;
 
                 // Clear old markers
-                if (markerLayer) map.removeLayer(markerLayer);
+                if (typeof markerLayer !== 'undefined' && markerLayer) {
+                    map.removeLayer(markerLayer);
+                }
                 markerLayer = L.featureGroup();
 
-                // Render all points
+                // Clear Sidebar List
                 const listContainer = document.getElementById('points-list');
-                listContainer.innerHTML = '';
+                if (listContainer) listContainer.innerHTML = '';
+
+                // Get Roles
+                const currentUserId = localStorage.getItem('userId');
+                const currentUserRole = localStorage.getItem('role');
 
                 allPoints.forEach(p => {
                     const lat = parseFloat(p.lat);
                     const lng = parseFloat(p.lng);
 
                     if (!isNaN(lat) && !isNaN(lng)) {
-                        const myIcon = L.icon({
-                            iconUrl: '/images/pin.png',
-                            iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -40]
-                        });
+                        const marker = L.marker([lat, lng]);
 
-                        const marker = L.marker([lat, lng], { icon: myIcon });
-                        const currentUser = localStorage.getItem('gis_username');
-                        const isOwner = (p.username === currentUser);
-
-                        // --- POPUP ---
-                        let popupButtons = '';
-                        if(isOwner) {
-                            popupButtons = `
-                                <div class="popup-btn-row">
-                                    <button class="popup-btn btn-edit" onclick="startEditById(${p.id})">EDIT</button>
-                                    <button class="popup-btn btn-delete" onclick="deletePoint(${p.id})">DELETE</button>
-                                </div>`;
-                        }
-
-                        const popupContent = `
-                            <div style="min-width: 150px;">
-                                <h3 style="margin:0; color:#00e676;">${p.name}</h3>
-                                <p style="margin:5px 0; color:#ddd;">${p.description || ""}</p>
-                                <small style="color:#888;">By: ${p.username}</small>
-                                ${popupButtons}
-                            </div>
+                        // --- POPUP CONTENT ---
+                        let popupContent = `
+                            <div style="text-align: center; width: 200px; font-family: sans-serif; padding: 10px;">
+                                <h3 style="margin: 0 0 5px 0; color: #00e676;">${p.name}</h3>
+                                <p style="margin: 0 0 10px 0; color: #ccc; font-size: 13px; white-space: pre-wrap;">${p.description || "No description"}</p>
+                                <div style="font-size: 11px; color: #888; margin-bottom: 10px;">
+                                    By: ${p.username || 'Unknown'}
+                                </div>
                         `;
+
+                        // CHECK: Admin OR Owner
+                        if (currentUserRole === 'admin' || currentUserId == p.user_id) {
+                            popupContent += `
+                                <div style="display:flex; gap:5px; justify-content:center;">
+                                    <button onclick="startEditById(${p.id})" style="background:#2fc6d7; color:black; border:none; padding:5px 10px; border-radius:3px; cursor:pointer; flex:1;">Edit</button>
+                                    <button onclick="deletePoint(${p.id})" style="background:#ff4444; color:white; border:none; padding:5px 10px; border-radius:3px; cursor:pointer; flex:1;">Delete</button>
+                                </div>
+                            `;
+                        }
+                        popupContent += `</div>`;
+                        
                         marker.bindPopup(popupContent);
-                        marker.addTo(markerLayer);
+                        markerLayer.addLayer(marker);
 
-                        // --- SIDEBAR CARD ---
-                        const card = document.createElement('div');
-                        card.className = 'point-card';
+                        // --- SIDEBAR LIST ITEM ---
+                        if (listContainer) {
+                            const card = document.createElement('div');
+                            card.className = 'point-card';
+                            
+                            // Check Role for Sidebar Icons
+                            let sidebarIcons = '';
+                            if (currentUserRole === 'admin' || currentUserId == p.user_id) {
+                                sidebarIcons = `
+                                    <div class="sidebar-actions">
+                                        <button class="icon-btn icon-edit" onclick="event.stopPropagation(); startEditById(${p.id})" title="Edit">✎</button>
+                                        <button class="icon-btn icon-delete" onclick="event.stopPropagation(); deletePoint(${p.id})" title="Delete">🗑</button>
+                                    </div>`;
+                            }
 
-                        let sidebarIcons = '';
-                        if (isOwner) {
-                            sidebarIcons = `
-                                <div class="sidebar-actions">
-                                    <button class="icon-btn icon-edit" onclick="event.stopPropagation(); startEditById(${p.id})" title="Edit">✎</button>
-                                    <button class="icon-btn icon-delete" onclick="event.stopPropagation(); deletePoint(${p.id})" title="Delete">🗑</button>
-                                </div>`;
+                            card.innerHTML = `
+                                <div class="point-header">
+                                    <div class="point-title">${p.name}</div>
+                                    ${sidebarIcons}
+                                </div>
+                                <div class="point-desc">${p.description || ""}</div>
+                                <div class="point-user">By: ${p.username}</div>
+                            `;
+                            
+                            card.onclick = () => {
+                                map.flyTo([lat, lng], 16);
+                                marker.openPopup();
+                            };
+                            listContainer.appendChild(card);
                         }
-
-                        card.innerHTML = `
-                            <div class="point-header">
-                                <div class="point-title">${p.name}</div>
-                                ${sidebarIcons}
-                            </div>
-                            <div class="point-desc">${p.description || ""}</div>
-                            <div class="point-user">By: ${p.username}</div>
-                        `;
-                        card.onclick = () => {
-                            map.flyTo([lat, lng], 16);
-                            marker.openPopup();
-                        };
-                        listContainer.appendChild(card);
                     }
                 });
-                markerLayer.addTo(map);
 
-            } catch (err) { console.error("Error loading points:", err); }
+                map.addLayer(markerLayer);
+
+            } catch (err) {
+                console.error("Error loading points:", err);
+            }
         }
 
-        // --- NEW SAFER EDIT FUNCTION ---
+        // --- EDIT / DELETE / SAVE FUNCTIONS ---
+
         function startEditById(id) {
-            // Find the point data from our global list
             const p = allPointsData.find(point => point.id === id);
             if (!p) return;
 
@@ -514,17 +397,18 @@ async function handleAuth() {
                     closeModal();
                     loadPoints();
                     editingId = null;
-                } else { alert("FAILED"); }
+                } else { alert("Operation Failed"); }
             } catch (err) { console.error(err); }
         }
 
         async function deletePoint(id) {
-            if(!confirm("DELETE PIN?")) return;
+            if(!confirm("Are you sure you want to DELETE this point?")) return;
             try {
                 const res = await fetch(`/api/layer/points/${id}`, {
                     method: 'DELETE', headers: { 'Authorization': token }
                 });
                 if (res.ok) loadPoints();
+                else alert("Failed to delete (Are you authorized?)");
             } catch(err) { console.error(err); }
         }
     </script>
