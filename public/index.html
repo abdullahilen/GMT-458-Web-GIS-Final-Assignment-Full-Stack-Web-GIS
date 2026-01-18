@@ -256,7 +256,7 @@
             loadPoints();
         }
 
-        // --- LOAD POINTS (Unified Logic) ---
+        // --- LOAD POINTS (With Custom PIN Image) ---
         async function loadPoints() {
             const currentToken = localStorage.getItem('gis_token'); 
             if (!currentToken) return;
@@ -290,12 +290,21 @@
                 const currentUserId = localStorage.getItem('userId');
                 const currentUserRole = localStorage.getItem('role');
 
+                // --- DEFINE CUSTOM ICON HERE ---
+                const customIcon = L.icon({
+                    iconUrl: 'images/pin.png', 
+                    iconSize: [40, 40],        
+                    iconAnchor: [20, 40],      
+                    popupAnchor: [0, -40]      
+                });
+
                 allPoints.forEach(p => {
                     const lat = parseFloat(p.lat);
                     const lng = parseFloat(p.lng);
 
                     if (!isNaN(lat) && !isNaN(lng)) {
-                        const marker = L.marker([lat, lng]);
+                        // USE THE CUSTOM ICON HERE
+                        const marker = L.marker([lat, lng], { icon: customIcon });
 
                         // --- POPUP CONTENT ---
                         let popupContent = `
