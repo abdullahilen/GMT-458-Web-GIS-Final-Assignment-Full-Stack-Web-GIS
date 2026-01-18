@@ -31,7 +31,7 @@ const swaggerOptions = {
             version: '1.0.0',
             description: 'API for managing spatial points with User Roles',
         },
-        servers: [{ url: `https://gmt-458-web-gis-final-assignment-full.onrender.com` }], // Ensure this matches your URL
+        servers: [{ url: `https://gmt-458-web-gis-final-assignment-full.onrender.com` }],
         components: {
             securitySchemes: {
                 bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
