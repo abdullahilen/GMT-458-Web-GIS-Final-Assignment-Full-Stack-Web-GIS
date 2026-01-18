@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const jwt = require('jsonwebtoken'); // <--- 1. Added this so we can check tokens
+const jwt = require('jsonwebtoken'); 
 require('dotenv').config();
 
 // Import database connection
@@ -20,7 +20,7 @@ app.use(express.static('public'));
 app.use('/api/auth', authRoutes);
 app.use('/api/layer', layerRoutes);
 
-// --- 2. THE SECURITY FUNCTION (Added directly here to prevent crashes) ---
+// --- SECURITY FUNCTION ---
 function authenticateToken(req, res, next) {
     const token = req.headers['authorization'];
     if (!token) return res.status(401).json({ msg: "Access Denied" });
@@ -32,13 +32,12 @@ function authenticateToken(req, res, next) {
     });
 }
 
-// --- 3. DELETE & EDIT ROUTES ---
+// --- DELETE & EDIT ROUTES ---
 
-// DELETE Route
+// 1. DELETE Route
 app.delete('/api/layer/points/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        // Check if point belongs to user
         const result = await db.query('DELETE FROM points WHERE id = $1 AND user_id = $2 RETURNING *', [id, req.user.id]);
         
         if (result.rowCount === 0) {
@@ -51,19 +50,37 @@ app.delete('/api/layer/points/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// UPDATE Route
-// --- GET POINTS (PRIVATE MODE) ---
-// We added 'authenticateToken' so we know WHO is asking
+// 2. UPDATE (Edit) Route - (This was missing!)
+app.put('/api/layer/points/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description } = req.body;
+        
+        const result = await db.query(
+            'UPDATE points SET name = $1, description = $2 WHERE id = $3 AND user_id = $4 RETURNING *',
+            [name, description, id, req.user.id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(403).json({ msg: "Not authorized or point not found" });
+        }
+        res.json(result.rows[0]);
+    } catch (err) { 
+        console.error(err); 
+        res.status(500).send("Server Error"); 
+    }
+});
+
+// 3. GET Route (Private Mode)
 app.get('/api/layer/points', authenticateToken, async (req, res) => {
     try {
-        // CHANGED: Added "WHERE points.user_id = $1"
-        // This ensures the database only returns rows belonging to the logged-in user.
+        // Only return points belonging to the logged-in user
         const result = await db.query(`
             SELECT points.*, users.username 
             FROM points 
             JOIN users ON points.user_id = users.id
             WHERE points.user_id = $1
-        `, [req.user.id]); // <--- Pass the User ID here
+        `, [req.user.id]); 
 
         res.json(result.rows);
     } catch (err) {
@@ -76,7 +93,8 @@ app.get('/api/layer/points', authenticateToken, async (req, res) => {
 app.get('/', (req, res) => {
     res.send('API is running...');
 });
-// --- DATABASE SETUP ROUTE (Run this once) ---
+
+// --- DATABASE SETUP ROUTE ---
 app.get('/setup-database', async (req, res) => {
     try {
         await db.query(`
@@ -96,7 +114,6 @@ app.get('/setup-database', async (req, res) => {
             );
         `);
         res.send("✅ Database Tables Created Successfully!");
- // ... setup route code ...
     } catch (err) {
         console.error(err);
         res.status(500).send("❌ Error: " + err.message);
