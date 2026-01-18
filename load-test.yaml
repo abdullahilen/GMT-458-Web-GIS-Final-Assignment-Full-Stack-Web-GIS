@@ -1,0 +1,25 @@
+config:
+  # SENİN RENDER ADRESİNİ AŞAĞIYA YAZ (sonunda / yok)
+  target: "https://gmt-458-web-gis-final-assignment-full.onrender.com"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      name: "Isınma Turu (Sakin Başlangıç)"
+    - duration: 20
+      arrivalRate: 20
+      name: "Yoğun Saatler (Yükleniyoruz)"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - flow:
+      - log: "Sanal kullanıcı haritayı açıyor..."
+      - get:
+          url: "/api/layer/points"
+      # Giriş yapmayı simüle etmek istersen (isteğe bağlı, şimdilik sadece harita çekelim)
+      # - post:
+      #     url: "/auth/login"
+      #     json:
+      #       username: "Patron"
+      #       password: "123456password"
