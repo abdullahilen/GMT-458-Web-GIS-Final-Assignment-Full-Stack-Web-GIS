@@ -166,34 +166,119 @@
             }
         }
 
-        async function handleAuth() {
-            const usernameInput = document.getElementById('username').value;
-            const pass = document.getElementById('password').value;
-            const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+       // --- TÜM LOADPOINTS FONKSİYONU (Kopyala ve Eskisinin Yerine Yapıştır) ---
 
-            if (!usernameInput || !pass) {
-                document.getElementById('error-msg').innerText = "Please fill all fields";
-                return;
+async function loadPoints() {
+    // 1. Token Kontrolü
+    const token = localStorage.getItem('gis_token'); 
+    if (!token) return;
+
+    try {
+        // 2. Veriyi Sunucudan Çek
+        const res = await fetch('/api/layer/points', {
+            headers: { 'Authorization': token }
+        });
+
+        if (!res.ok) {
+            console.error("Veri çekilemedi");
+            return;
+        }
+
+        const allPoints = await res.json();
+        if (!Array.isArray(allPoints)) return;
+
+        // 3. Değişkenleri Hazırla
+        allPointsData = allPoints; // Global değişken (varsa)
+
+        // Eski harita markerlarını temizle
+        if (typeof markerLayer !== 'undefined' && markerLayer) {
+            map.removeLayer(markerLayer);
+        }
+        markerLayer = L.featureGroup();
+
+        // Sağdaki listeyi temizle (varsa)
+        const listContainer = document.getElementById('points-list');
+        if (listContainer) listContainer.innerHTML = '';
+
+        // Kimin giriş yaptığını öğren
+        const currentUserId = localStorage.getItem('userId');
+        const currentUserRole = localStorage.getItem('role');
+
+        // 4. Döngü: Her nokta için işlem yap
+        allPoints.forEach(p => {
+            const lat = parseFloat(p.lat);
+            const lng = parseFloat(p.lng);
+
+            // Marker oluştur
+            const marker = L.marker([lat, lng]);
+
+            // --- POPUP İÇERİĞİ (GÖRÜNÜM AYARLARI BURADA) ---
+            let popupContent = `
+                <div style="text-align: center; width: 200px; font-family: sans-serif;">
+                    
+                    <h3 style="margin: 0 0 5px 0; color: #333;">${p.name}</h3>
+                    
+                    <p style="margin: 0 0 10px 0; color: #666; font-size: 14px; white-space: pre-wrap;">${p.description}</p>
+                    
+                    <div style="font-size: 12px; color: #999; margin-bottom: 10px;">
+                        Ekleyen: ${p.username || 'Bilinmiyor'}
+                    </div>
+            `;
+
+            // Eğer Admin ise veya kullanıcı kendi piniyse "SİL" butonu ekle
+            if (currentUserRole === 'admin' || currentUserId == p.user_id) {
+                popupContent += `
+                    <button onclick="deletePoint(${p.id})" 
+                            style="
+                                background-color: #ff4444; 
+                                color: white; 
+                                border: none; 
+                                padding: 8px 15px; 
+                                border-radius: 5px; 
+                                cursor: pointer; 
+                                font-weight: bold;
+                                width: 100%;">
+                        SİL
+                    </button>
+                `;
             }
 
-            try {
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: usernameInput, password: pass })
-                });
-                const data = await res.json();
+            popupContent += `</div>`; // Div kapanış
+            // --------------------------------------------------
 
-                if (res.ok) {
-                    token = data.token;
-                    localStorage.setItem('gis_token', token);
-                    localStorage.setItem('gis_username', usernameInput);
-                    showApp();
-                } else {
-                    document.getElementById('error-msg').innerText = data.error || data.msg || 'Error';
-                }
-            } catch (err) { console.error(err); }
-        }
+            marker.bindPopup(popupContent);
+            markerLayer.addLayer(marker);
+
+            // Sağ menüye (listeye) ekle
+            if (listContainer) {
+                const li = document.createElement('div');
+                li.className = 'point-item';
+                // CSS ile uğraşma diye stilleri buraya gömdüm
+                li.style.borderBottom = "1px solid #eee";
+                li.style.padding = "10px";
+                li.style.cursor = "pointer";
+                li.style.background = "#fff";
+                
+                li.innerHTML = `
+                    <div style="font-weight: bold; color: #333;">${p.name}</div>
+                    <div style="color: #666; font-size: 0.9em;">${p.description}</div>
+                `;
+                
+                li.onclick = () => {
+                    map.setView([lat, lng], 15);
+                    marker.openPopup();
+                };
+                listContainer.appendChild(li);
+            }
+        });
+
+        // Haritaya markerları ekle
+        map.addLayer(markerLayer);
+
+    } catch (err) {
+        console.error("LoadPoints hatası:", err);
+    }
+}
 
         function showApp() {
             document.getElementById('auth-screen').style.display = 'none';
