@@ -126,7 +126,7 @@ app.get('/setup-database', async (req, res) => {
         console.error(err);
         res.status(500).send("❌ Error: " + err.message);
     }
-});git
+});
 
 // Start Server
 const PORT = process.env.PORT || 3000;
