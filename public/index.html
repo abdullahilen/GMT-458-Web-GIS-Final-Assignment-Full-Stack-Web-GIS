@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoSpatial Explorer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* --- DARK THEME VARIABLES --- */
+        :root {
+            --bg-dark: #1a1a1a;
+            --sidebar-dark: #121212;
+            --accent-neon: #00e676;
+            --text-white: #ededed;
+            --danger-color: #e74c3c;
+            --edit-color: #2fc6d7;
+        }
+
+        body { margin: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; background: #000; color: white; }
+
+        /* LOGIN SCREEN */
+        #auth-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url('https://images.unsplash.com/photo-1519501025264-65ba15a82390?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover; background-position: center;
+            display: flex; justify-content: center; align-items: center; z-index: 2000;
+        }
+        #auth-screen::before {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px);
+        }
+        .auth-box {
+            position: relative; z-index: 2001; background: rgba(30, 30, 30, 0.95); 
+            border: 1px solid #333; padding: 2.5rem; border-radius: 8px; 
+            box-shadow: 0 0 25px rgba(0, 230, 118, 0.15); text-align: center; width: 320px;
+        }
+        .auth-box h2 { color: white; margin: 0 0 10px 0; letter-spacing: 2px; }
+        .auth-box p { color: #888; margin-bottom: 25px; font-size: 0.85rem; }
+        input { 
+            padding: 12px; margin: 10px 0; width: 100%; box-sizing: border-box;
+            border: 1px solid #444; border-radius: 4px; background: #111; color: var(--accent-neon);
+        }
+        button { 
+            padding: 12px; width: 100%; border: none; border-radius: 4px; 
+            font-weight: bold; cursor: pointer; margin-top: 15px; letter-spacing: 1px;
+        }
+        .btn-login { background: var(--accent-neon); color: black; }
+        .btn-register { background: #333; color: white; border: 1px solid #555; }
+        .toggle-text { margin-top: 20px; font-size: 0.8rem; cursor: pointer; color: var(--accent-neon); }
+
+        /* APP LAYOUT */
+        #app-container { display: flex; height: 100vh; width: 100vw; }
+        #sidebar { width: 340px; background: var(--sidebar-dark); border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 1002; }
+        #sidebar-header { padding: 20px; background: #0a0a0a; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        #sidebar-header h3 { margin: 0; font-size: 1.1rem; color: var(--accent-neon); }
+        #points-list { flex: 1; overflow-y: auto; padding: 15px; background: #0a0a0a; }
+        
+        /* CARD & ICONS */
+        .point-card { background: #181818; border: 1px solid #333; border-radius: 4px; padding: 15px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+        .point-card:hover { background: #222; border-color: var(--accent-neon); }
+        .point-header { display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-actions { display: flex; gap: 8px; }
+        .icon-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 2px; opacity: 0.6; }
+        .icon-btn:hover { opacity: 1; transform: scale(1.2); }
+        .icon-edit { color: var(--edit-color); }
+        .icon-delete { color: var(--danger-color); }
+        .point-title { font-weight: bold; }
+        .point-desc { font-size: 0.85rem; color: #888; margin-top: 5px; }
+        .point-user { font-size: 0.7rem; color: #555; margin-top: 10px; }
+
+        #map { flex: 1; }
+        .btn-logout { background: transparent; border: 1px solid #444; padding: 4px 8px; color: #888; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+        
+        /* POPUP & MODAL */
+        .leaflet-popup-content-wrapper { background: #222; color: #ededed; border: 1px solid var(--accent-neon); }
+        .leaflet-popup-tip { background: #222; }
+        .popup-btn-row { display: flex; gap: 5px; margin-top: 8px; border-top: 1px solid #333; padding-top: 8px; }
+        .popup-btn { flex: 1; border: none; padding: 5px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; color: white; }
+        .btn-edit { background: var(--edit-color); }
+        .btn-delete { background: var(--danger-color); }
+
+        #modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: none; justify-content: center; align-items: center; }
+        .modal-box { background: #111; border: 1px solid var(--accent-neon); padding: 30px; width: 350px; border-radius: 6px; }
+        .modal-box h3 { color: var(--accent-neon); margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .modal-box input, .modal-box textarea { width: 100%; background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; margin-bottom: 15px; box-sizing: border-box; }
+        .modal-buttons { display: flex; gap: 10px; }
+        .modal-buttons button { width: 50%; padding: 12px; }
+        .btn-cancel { background: transparent; border: 1px solid #444; color: #888; }
+        .btn-confirm { background: var(--accent-neon); color: black; border: none; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen">
+        <div class="auth-box">
+            <h2 id="form-title">SYSTEM LOGIN</h2>
+            <p id="form-subtitle">Secure Access Required</p>
+            <input type="text" id="username" placeholder="USER ID / CODENAME">
+            <input type="password" id="password" placeholder="PASSWORD">
+            <button id="main-btn" class="btn-login" onclick="handleAuth()">ACCESS SYSTEM</button>
+            <p id="error-msg" style="color:#ff5252; margin-top: 10px;"></p>
+            <p class="toggle-text" onclick="toggleMode()">New Unit? Register</p>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <h3>PINS</h3>
+                <button class="btn-logout" onclick="logout()">LOGOUT</button>
+            </div>
+            <div id="points-list">
+                <p style="text-align:center; color:#444; margin-top:20px;">[ SEARCHING DATA... ]</p>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modal-title">NEW PIN</h3>
+            <label style="color:#888; font-size:0.8rem;">PIN NAME</label>
+            <input type="text" id="input-name" placeholder="ENTER NAME">
+            <label style="color:#888; font-size:0.8rem;">DESCRIPTION</label>
+            <textarea id="input-desc" rows="3" placeholder=""></textarea>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeModal()">CANCEL</button>
+                <button class="btn-confirm" onclick="submitPoint()">SAVE</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // --- GLOBAL VARIABLES ---
+        let map, markerLayer;
+        let token = localStorage.getItem('gis_token');
+        let isLoginMode = true;
+        let tempLatLng = null;
+        let editingId = null;
+        let allPointsData = []; // Store point data here to avoid quote errors
+
+        // Start App if logged in
+        if (token) {
+            showApp();
+        }
+
+        // --- AUTH FUNCTIONS ---
+        function toggleMode() {
+            isLoginMode = !isLoginMode;
+            const title = document.getElementById('form-title');
+            const btn = document.getElementById('main-btn');
+            const toggle = document.querySelector('.toggle-text');
+
+            if (isLoginMode) {
+                title.innerText = "SYSTEM LOGIN";
+                btn.innerText = "ACCESS SYSTEM";
+                btn.className = "btn-login";
+                toggle.innerText = "New Unit? Register";
+            } else {
+                title.innerText = "UNIT REGISTRATION";
+                btn.innerText = "REGISTER";
+                btn.className = "btn-register";
+                toggle.innerText = "Existing Unit? Login";
+            }
+        }
+
+        async function handleAuth() {
+            const usernameInput = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+
+            if (!usernameInput || !pass) {
+                document.getElementById('error-msg').innerText = "Please fill all fields";
+                return;
+            }
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameInput, password: pass })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    token = data.token;
+                    localStorage.setItem('gis_token', token);
+                    localStorage.setItem('gis_username', usernameInput);
+                    showApp();
+                } else {
+                    document.getElementById('error-msg').innerText = data.error || data.msg || 'Error';
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function showApp() {
+            document.getElementById('auth-screen').style.display = 'none';
+            if (!map) initMap();
+        }
+
+        function logout() {
+            localStorage.removeItem('gis_token');
+            localStorage.removeItem('gis_username');
+            location.reload();
+        }
+
+        // --- MAP FUNCTIONS ---
+        function initMap() {
+            map = L.map('map').setView([41.0082, 28.9784], 10);
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 20
+            }).addTo(map);
+
+            const locateControl = L.control({ position: 'topleft' });
+            locateControl.onAdd = function() {
+                const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                div.innerHTML = '📍';
+                div.style.cssText = 'background:#111; color:#00e676; width:30px; height:30px; font-size:18px; line-height:30px; text-align:center; cursor:pointer; border:2px solid #444;';
+                div.onclick = function() { map.locate({setView: true, maxZoom: 16}); };
+                return div;
+            };
+            locateControl.addTo(map);
+
+            map.on('locationfound', e => {
+                L.circleMarker(e.latlng, { radius: 10, fillColor: "#00e676", color: "#fff", weight: 3, fillOpacity: 0.8 })
+                 .addTo(map).bindPopup("TARGET ACQUIRED").openPopup();
+            });
+
+            map.on('contextmenu', (e) => {
+                editingId = null; 
+                document.getElementById('modal-title').innerText = "NEW PIN";
+                document.getElementById('input-name').value = '';
+                document.getElementById('input-desc').value = '';
+                tempLatLng = e.latlng;
+                document.getElementById('modal-overlay').style.display = 'flex';
+                document.getElementById('input-name').focus();
+            });
+
+            loadPoints();
+        }
+
+        async function loadPoints() {
+            if (markerLayer) map.removeLayer(markerLayer);
+            const listContainer = document.getElementById('points-list');
+            listContainer.innerHTML = ""; 
+
+            try {
+                const res = await fetch('/api/layer/points', { headers: { 'Authorization': token } });
+                if (res.status === 401) { logout(); return; }
+
+                const points = await res.json();
+                allPointsData = points; // Save for lookup
+                markerLayer = L.layerGroup();
+
+                if (points.length === 0) {
+                    listContainer.innerHTML = "<p style='text-align:center; padding:20px; color:#555;'>[ NO DATA ]</p>";
+                    return;
+                }
+
+                points.forEach(p => {
+                    const lat = parseFloat(p.lat);
+                    const lng = parseFloat(p.lng);
+
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        const myIcon = L.icon({
+                            iconUrl: '/images/pin.png', 
+                            iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -40]
+                        });
+
+                        const marker = L.marker([lat, lng], { icon: myIcon });
+                        const currentUser = localStorage.getItem('gis_username');
+                        const isOwner = (p.username === currentUser);
+
+                        // --- POPUP ---
+                        let popupButtons = '';
+                        if(isOwner) {
+                            // We now pass only ID. The function startEditById will look up the details.
+                            popupButtons = `
+                                <div class="popup-btn-row">
+                                    <button class="popup-btn btn-edit" onclick="startEditById(${p.id})">EDIT</button>
+                                    <button class="popup-btn btn-delete" onclick="deletePoint(${p.id})">DELETE</button>
+                                </div>`;
+                        }
+
+                        const popupContent = `
+                            <div style="min-width: 150px;">
+                                <h3 style="margin:0; color:#00e676;">${p.name}</h3>
+                                <p style="margin:5px 0; color:#ddd;">${p.description || ""}</p>
+                                <small style="color:#888;">By: ${p.username}</small>
+                                ${popupButtons}
+                            </div>
+                        `;
+                        marker.bindPopup(popupContent);
+                        marker.addTo(markerLayer);
+
+                        // --- SIDEBAR CARD ---
+                        const card = document.createElement('div');
+                        card.className = 'point-card';
+
+                        let sidebarIcons = '';
+                        if (isOwner) {
+                            // Same here: Use ID lookup to avoid quote errors
+                            sidebarIcons = `
+                                <div class="sidebar-actions">
+                                    <button class="icon-btn icon-edit" onclick="event.stopPropagation(); startEditById(${p.id})" title="Edit">✎</button>
+                                    <button class="icon-btn icon-delete" onclick="event.stopPropagation(); deletePoint(${p.id})" title="Delete">🗑</button>
+                                </div>`;
+                        }
+
+                        card.innerHTML = `
+                            <div class="point-header">
+                                <div class="point-title">${p.name}</div>
+                                ${sidebarIcons}
+                            </div>
+                            <div class="point-desc">${p.description || ""}</div>
+                            <div class="point-user">Me: ${p.username}</div>
+                        `;
+                        card.onclick = () => {
+                            map.flyTo([lat, lng], 16);
+                            marker.openPopup();
+                        };
+                        listContainer.appendChild(card);
+                    }
+                });
+                markerLayer.addTo(map);
+
+            } catch (err) { console.error("Error loading points:", err); }
+        }
+
+        // --- NEW SAFER EDIT FUNCTION ---
+        function startEditById(id) {
+            // Find the point data from our global list
+            const p = allPointsData.find(point => point.id === id);
+            if (!p) return;
+
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('input-name').value = p.name;
+            document.getElementById('input-desc').value = p.description || "";
+            document.getElementById('modal-title').innerText = "EDIT PIN DATA";
+            
+            editingId = id;
+            map.closePopup();
+        }
+
+        function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+
+        async function submitPoint() {
+            const name = document.getElementById('input-name').value;
+            const description = document.getElementById('input-desc').value;
+            if (!name) { alert("NAME REQUIRED"); return; }
+
+            const method = editingId ? 'PUT' : 'POST';
+            const url = editingId ? `/api/layer/points/${editingId}` : '/api/layer/points';
+            const body = editingId ? { name, description } : { name, description, latitude: tempLatLng.lat, longitude: tempLatLng.lng };
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                    body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    closeModal();
+                    loadPoints();
+                    editingId = null;
+                } else { alert("FAILED"); }
+            } catch (err) { console.error(err); }
+        }
+
+        async function deletePoint(id) {
+            if(!confirm("DELETE PIN?")) return;
+            try {
+                const res = await fetch(`/api/layer/points/${id}`, {
+                    method: 'DELETE', headers: { 'Authorization': token }
+                });
+                if (res.ok) loadPoints();
+            } catch(err) { console.error(err); }
+        }
+    </script>
+</body>
+</html>
