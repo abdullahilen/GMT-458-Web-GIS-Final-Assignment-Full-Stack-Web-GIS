@@ -76,7 +76,31 @@ app.get('/api/layer/points', authenticateToken, async (req, res) => {
 app.get('/', (req, res) => {
     res.send('API is running...');
 });
-
+// --- DATABASE SETUP ROUTE (Run this once) ---
+app.get('/setup-database', async (req, res) => {
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS points (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(255),
+                description TEXT,
+                lat DECIMAL,
+                lng DECIMAL,
+                user_id INTEGER REFERENCES users(id),
+                username VARCHAR(255)
+            );
+        `);
+        res.send("✅ Database Tables Created Successfully!");
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("❌ Error: " + err.message);
+    }
+});git add .
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
