@@ -1,56 +1,128 @@
 const express = require('express');
 const cors = require('cors');
-const jwt = require('jsonwebtoken'); 
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); 
+const { Pool } = require('pg');
 require('dotenv').config();
-
-// Import database connection
-const db = require('./config/db');
-
-const layerRoutes = require('./routes/layerRoutes');
-const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 
-// Middleware
+// --- 1. DATABASE CONNECTION ---
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // Required for Render
+});
+
+const db = {
+    query: (text, params) => pool.query(text, params),
+};
+
+// --- 2. MIDDLEWARE ---
 app.use(cors());
-app.use(express.json()); 
-app.use(express.static('public')); 
+app.use(express.json());
+app.use(express.static('public'));
 
-// Mount Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/layer', layerRoutes);
+// --- 3. AUTHENTICATION ROUTES ---
 
-// --- SECURITY FUNCTION ---
+// REGISTER
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        
+        // Check if user exists
+        const userCheck = await db.query('SELECT * FROM users WHERE username = $1', [username]);
+        if (userCheck.rows.length > 0) return res.status(400).json({ msg: "User already exists" });
+
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Save User
+        const newUser = await db.query(
+            'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username',
+            [username, hashedPassword]
+        );
+
+        // Auto-Login (Generate Token)
+        const token = jwt.sign({ id: newUser.rows[0].id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
+        res.json({ token, user: newUser.rows[0] });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Server Error");
+    }
+});
+
+// LOGIN
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        const user = await db.query('SELECT * FROM users WHERE username = $1', [username]);
+        if (user.rows.length === 0) return res.status(400).json({ msg: "User not found" });
+
+        const isMatch = await bcrypt.compare(password, user.rows[0].password);
+        if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
+
+        const token = jwt.sign({ id: user.rows[0].id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
+        res.json({ token, user: user.rows[0] });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Server Error");
+    }
+});
+
+// --- 4. SECURITY MIDDLEWARE ---
 function authenticateToken(req, res, next) {
     const token = req.headers['authorization'];
     if (!token) return res.status(401).json({ msg: "Access Denied" });
 
-    jwt.verify(token, process.env.JWT_SECRET || 'your_secret_key', (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET || 'secret', (err, user) => {
         if (err) return res.status(403).json({ msg: "Invalid Token" });
         req.user = user;
         next();
     });
 }
 
-// --- DELETE & EDIT ROUTES ---
+// --- 5. MAP DATA ROUTES (The Fix: Using table 'points') ---
 
-// 1. DELETE Route
-app.delete('/api/layer/points/:id', authenticateToken, async (req, res) => {
+// GET POINTS (Private)
+app.get('/api/layer/points', authenticateToken, async (req, res) => {
     try {
-        const { id } = req.params;
-        const result = await db.query('DELETE FROM points WHERE id = $1 AND user_id = $2 RETURNING *', [id, req.user.id]);
-        
-        if (result.rowCount === 0) {
-            return res.status(403).json({ msg: "Not authorized or point not found" });
-        }
-        res.json({ msg: "Point deleted" });
-    } catch (err) { 
-        console.error(err); 
-        res.status(500).send("Server Error"); 
+        const result = await db.query(`
+            SELECT points.*, users.username 
+            FROM points 
+            JOIN users ON points.user_id = users.id
+            WHERE points.user_id = $1
+        `, [req.user.id]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Server Error");
     }
 });
 
-// 2. UPDATE (Edit) Route - (This was missing!)
+// ADD POINT
+app.post('/api/layer/points', authenticateToken, async (req, res) => {
+    try {
+        const { name, description, latitude, longitude } = req.body;
+        
+        // Fetch username for display
+        const userRes = await db.query('SELECT username FROM users WHERE id = $1', [req.user.id]);
+        const username = userRes.rows[0].username;
+
+        const newPoint = await db.query(
+            'INSERT INTO points (name, description, lat, lng, user_id, username) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [name, description, latitude, longitude, req.user.id, username]
+        );
+        res.json(newPoint.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Server Error");
+    }
+});
+
+// EDIT POINT
 app.put('/api/layer/points/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
@@ -61,58 +133,31 @@ app.put('/api/layer/points/:id', authenticateToken, async (req, res) => {
             [name, description, id, req.user.id]
         );
 
-        if (result.rowCount === 0) {
-            return res.status(403).json({ msg: "Not authorized or point not found" });
-        }
+        if (result.rowCount === 0) return res.status(403).json({ msg: "Not authorized" });
         res.json(result.rows[0]);
-    } catch (err) { 
-        console.error(err); 
-        res.status(500).send("Server Error"); 
-    }
+    } catch (err) { console.error(err); res.status(500).send("Server Error"); }
 });
 
-// 3. GET Route (Private Mode)
-app.get('/api/layer/points', authenticateToken, async (req, res) => {
+// DELETE POINT
+app.delete('/api/layer/points/:id', authenticateToken, async (req, res) => {
     try {
-        // Only return points belonging to the logged-in user
-        const result = await db.query(`
-            SELECT points.*, users.username 
-            FROM points 
-            JOIN users ON points.user_id = users.id
-            WHERE points.user_id = $1
-        `, [req.user.id]); 
-
-        res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("Server Error");
-    }
+        const { id } = req.params;
+        const result = await db.query('DELETE FROM points WHERE id = $1 AND user_id = $2 RETURNING *', [id, req.user.id]);
+        
+        if (result.rowCount === 0) return res.status(403).json({ msg: "Not authorized" });
+        res.json({ msg: "Deleted" });
+    } catch (err) { console.error(err); res.status(500).send("Server Error"); }
 });
 
-// Test Route
-app.get('/', (req, res) => {
-    res.send('API is running...');
-});
-
-// --- ROBUST DATABASE SETUP ROUTE ---
+// --- 6. SETUP ROUTE (Run if tables are missing) ---
 app.get('/setup-database', async (req, res) => {
     try {
-        // 1. Create Users Table
         await db.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(255) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL
             );
-        `);
-        
-        // 2. Fix 'role' column if missing
-        try {
-            await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';`);
-        } catch (e) { console.log("Role column likely exists"); }
-
-        // 3. Create Points Table (The likely culprit!)
-        await db.query(`
             CREATE TABLE IF NOT EXISTS points (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(255),
@@ -123,12 +168,8 @@ app.get('/setup-database', async (req, res) => {
                 username VARCHAR(255)
             );
         `);
-
-        res.send("✅ Database Tables Verified & Fixed!");
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("❌ Setup Failed: " + err.message);
-    }
+        res.send("✅ Database Tables Fixed!");
+    } catch (err) { console.error(err); res.status(500).send(err.message); }
 });
 
 // Start Server
