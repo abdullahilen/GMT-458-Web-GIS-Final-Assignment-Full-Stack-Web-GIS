@@ -242,31 +242,42 @@
             loadPoints();
         }
 
+        // --- LOAD POINTS ---
         async function loadPoints() {
-            if (markerLayer) map.removeLayer(markerLayer);
-            const listContainer = document.getElementById('points-list');
-            listContainer.innerHTML = ""; 
+            const token = localStorage.getItem('gis_token');
+            if (!token) return;
 
             try {
-                const res = await fetch('/api/layer/points', { headers: { 'Authorization': token } });
-                if (res.status === 401) { logout(); return; }
+                const res = await fetch('/api/layer/points', {
+                    headers: { 'Authorization': token }
+                });
 
-                const points = await res.json();
-                allPointsData = points; // Save for lookup
-                markerLayer = L.layerGroup();
-
-                if (points.length === 0) {
-                    listContainer.innerHTML = "<p style='text-align:center; padding:20px; color:#555;'>[ NO DATA ]</p>";
+                if (!res.ok) {
+                    console.error("Error loading points");
                     return;
                 }
 
-                points.forEach(p => {
+                const allPoints = await res.json();
+                if (!Array.isArray(allPoints)) return;
+
+                // Store globally to avoid quote errors in event handlers
+                allPointsData = allPoints;
+
+                // Clear old markers
+                if (markerLayer) map.removeLayer(markerLayer);
+                markerLayer = L.featureGroup();
+
+                // Render all points
+                const listContainer = document.getElementById('points-list');
+                listContainer.innerHTML = '';
+
+                allPoints.forEach(p => {
                     const lat = parseFloat(p.lat);
                     const lng = parseFloat(p.lng);
 
                     if (!isNaN(lat) && !isNaN(lng)) {
                         const myIcon = L.icon({
-                            iconUrl: '/images/pin.png', 
+                            iconUrl: '/images/pin.png',
                             iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -40]
                         });
 
@@ -277,7 +288,6 @@
                         // --- POPUP ---
                         let popupButtons = '';
                         if(isOwner) {
-                            // We now pass only ID. The function startEditById will look up the details.
                             popupButtons = `
                                 <div class="popup-btn-row">
                                     <button class="popup-btn btn-edit" onclick="startEditById(${p.id})">EDIT</button>
@@ -302,7 +312,6 @@
 
                         let sidebarIcons = '';
                         if (isOwner) {
-                            // Same here: Use ID lookup to avoid quote errors
                             sidebarIcons = `
                                 <div class="sidebar-actions">
                                     <button class="icon-btn icon-edit" onclick="event.stopPropagation(); startEditById(${p.id})" title="Edit">✎</button>
@@ -316,7 +325,7 @@
                                 ${sidebarIcons}
                             </div>
                             <div class="point-desc">${p.description || ""}</div>
-                            <div class="point-user">Me: ${p.username}</div>
+                            <div class="point-user">By: ${p.username}</div>
                         `;
                         card.onclick = () => {
                             map.flyTo([lat, lng], 16);
